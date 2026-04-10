@@ -1,0 +1,4 @@
+Pipeline,Exact Match Count,I don't know Count,Total
+Baseline,0,1200,1200
+Simple RAG,139,822,1200
+Agentic RAG,69,955,1200

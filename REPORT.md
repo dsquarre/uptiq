@@ -1,56 +1,57 @@
 # Benchmark Report
 
-## 1) Experiment Setup
+## 1. Experiment Setup
 
-- Dataset: SQuAD v2 deterministic subset
-- Query count: 1200 (target >=1000)
-- Architectures compared: Simple RAG vs Agentic RAG
-- Judge mode: local (or hybrid)
-- Config files: `configs/benchmark.base.yaml`, `configs/benchmark.low_budget.yaml`
+- Model: `llama3.2:1b` via Ollama
+- Embedding model: `all-MiniLM-L6-v2`
+- Retriever: ChromaDB
+- Dataset: `data/val_benchmark_1200.jsonl` (1200 queries)
 
-## 2) Metrics
+Architectures compared:
+- Baseline (no context, deterministic abstain)
+- Simple RAG (single retrieval + answer)
+- Agentic RAG (retrieve -> sufficiency check -> optional expanded retrieval -> answer -> grounding verifier)
 
-### Quantitative
-- Exact Match (EM)
-- Token F1
-- Recall@k
-- MRR
+## 2. Metrics
 
-### LLM-as-a-Judge
-- Correctness (1-5)
-- Completeness (1-5)
-- Reasoning quality (1-5)
+Quantitative:
+- Exact Match
+- F1 Score
+- Retrieval Hit Rate@2
+- Latency
 
-## 3) Results (Template)
+LLM-as-a-Judge:
+- Correctness
+- Completeness
+- Reasoning
+- Faithfulness
 
-| Architecture | EM | F1 | Recall@k | MRR | Judge Correctness | Judge Completeness | Judge Reasoning |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Simple RAG | - | - | - | - | - | - | - |
-| Agentic RAG | - | - | - | - | - | - | - |
+## 3. Results
 
-## 4) Insights
+All outputs saved in `evaluation/` folder:
+- Pipeline-level metrics: `evaluation/evaluation_results.csv`
+- Per-query scores: `evaluation/query_level_scores.csv`
+- Analysis artifacts: `evaluation/analysis_report.md`, `evaluation/failure_mode_summary.csv`, `evaluation/failure_cases.csv`
 
-### Strengths
-- Simple RAG:
-- Agentic RAG:
+## 5. Trade-offs
 
-### Weaknesses
-- Simple RAG:
-- Agentic RAG:
+- Baseline gives strict abstention control but no answer coverage.
+- Simple RAG is cheaper/faster than complex agents.
+- Agentic RAG can improve grounding but may increase latency and can over-abstain if verifier is too strict.
 
-### Failure Modes
-- Retrieval miss
-- Partial answer
-- Hallucination
-- Judge disagreement
+## 4. Visualization
 
-## 5) Trade-offs
+Charts saved to `evaluation/charts/`:
+- Model comparison chart
+- Latency comparison chart
+- Abstention rate chart
+- F1 score distribution
+- Correctness distribution
 
-- Quality vs latency
-- Quality vs cost
-- Simplicity vs controllability
+## 5. Reproducibility
 
-## 6) Recommendation
+Run full benchmark:
 
-- Suggested architecture for low-budget production-like QA:
-- Suggested architecture for highest-quality QA:
+```bash
+python src/main.py --dataset data/val_benchmark_1200.jsonl
+```

@@ -2,36 +2,30 @@
 
 ## Source
 
-Primary dataset: **SQuAD v2** via Hugging Face `datasets`.
+This benchmark uses JSONL QA datasets in SQuAD-like format with fields:
+- `question`
+- `context`
+- `answers` (first answer used as reference)
+
+Files:
+- `data/train_reference_1200.jsonl`
+- `data/val_benchmark_1200.jsonl` (default benchmark split)
+- `data/val_holdout_1200.jsonl` (optional holdout)
 
 ## Size
 
-- Raw: full SQuAD v2 train split
-- Processed benchmark subset: default **1200** samples (configurable, minimum target 1000)
+- Benchmark split size: 1200 queries.
+- Meets the assignment minimum requirement (>= 1000 queries).
 
 ## Preprocessing
 
-Pipeline script: `python -m src.data.prepare_squad`
+Pipeline preprocessing in `src/main.py`:
+1. Parse JSONL and extract question, context, answer.
+2. Build ChromaDB collection from contexts.
+3. Encode contexts and queries with `all-MiniLM-L6-v2`.
+4. For evaluation, use first gold answer as reference.
 
-Steps:
+## Notes
 
-1. Load split from `datasets`.
-2. Normalize to canonical fields:
-   - `id`, `question`, `context`, `answers`, `is_impossible`
-3. Filter malformed rows.
-4. Deterministically sample `num_samples` with fixed seed.
-5. Write JSONL to `data/processed/`.
-
-## Format
-
-Each JSONL line:
-
-```json
-{"id":"...","question":"...","context":"...","answers":["..."],"is_impossible":false}
-```
-
-## Notes and Limitations
-
-- SQuAD v2 is English QA; results may not transfer to finance or multi-hop domains.
-- Some samples are unanswerable (`is_impossible=true`) and are preserved.
-- Retrieval quality depends on context chunking strategy.
+- `--max-queries` can be used for quick tests.
+- Final benchmark should run without `--max-queries` for full 1200-query evaluation.

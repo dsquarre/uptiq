@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+
+.pytest_cache/
+results/
+data/processed/*.jsonl
+data/processed/*.meta.json
+chroma_db/

@@ -1,74 +1,81 @@
-# uptiq
+# Agent Benchmarking Repository
 
-Benchmarking suite for comparing **Simple RAG** vs **Agentic RAG** on 1000+ QA tasks with quantitative metrics and LLM-as-a-Judge evaluation.
+This repository benchmarks multiple QA agent architectures on a 1200-query dataset and produces quantitative metrics, LLM-as-a-judge metrics, failure analysis, and visualizations.
 
-## Scope
+## Problem Alignment
 
-- Architectures: Simple RAG vs Agentic RAG
-- Dataset: SQuAD v2 (deterministic subset generation, default 1200 queries)
-- Quant metrics: Exact Match (EM), token-level F1, Recall@k, MRR
-- LLM Judge: correctness, completeness, reasoning quality
-- Optional metrics: latency and estimated cost
+This repo satisfies the assignment requirements:
+- Compare 2 architectures: Simple RAG vs Agentic RAG (plus Baseline control).
+- Use large dataset: 1200 queries (`data/val_benchmark_1200.jsonl`).
+- Define inputs/outputs/tools in architecture docs.
+- Include quantitative + LLM-as-a-judge evaluation.
+- Run reproducible pipeline: Run -> Collect -> Evaluate -> Compare.
+- Provide analysis artifacts: strengths, weaknesses, failure modes.
+- Provide visualization charts (bonus).
 
-## Quickstart
+## Repository Structure
 
-1. Create environment and install dependencies:
+- `src/main.py`: end-to-end benchmark pipeline.
+- `src/evaluate.py`: evaluation metrics and LLM judge logic.
+- `configs/`: benchmark config presets.
+- `data/`: dataset docs.
+- `evaluation/`: evaluation/reporting docs.
+- `README.md`, `ARCHITECTURE.md`, `BENCHMARK_SPEC.md`, `DATASET.md`, `REPORT.md`, `ANY_OTHER_DIAGRAMS.md`, `DEMO_VIDEO.md`.
+
+## Setup
+
+1. Create a Python environment.
+2. Install dependencies:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2. Prepare dataset subset (1200 samples by default):
+3. Ensure Ollama is running and the model is available:
 
 ```bash
-python -m src.data.prepare_squad --output data/processed/squad_v2_1200.jsonl --num-samples 1200 --seed 42
+ollama pull llama3.2:1b
 ```
 
-3. Run benchmark in low-budget mode:
+## Run Benchmark
+
+Full benchmark (1200 queries):
 
 ```bash
-python -m src.pipeline.run_benchmark --config configs/benchmark.low_budget.yaml
+python src/main.py --dataset data/val_benchmark_1200.jsonl
 ```
 
-4. Analyze failures and generate plots:
+Quick benchmark (smoke test):
 
 ```bash
-python -m src.analysis.analyze_failures --predictions results/latest/predictions.jsonl --output results/latest/failures.json
-python -m src.visualize.plots --metrics results/latest/summary.json --output-dir results/latest/plots
+python src/main.py --dataset data/val_benchmark_1200.jsonl --max-queries 20
 ```
 
-## Reproducibility
+## Outputs
 
-- All runs are config-driven through `configs/*.yaml`
-- Dataset subset sampling is deterministic via seed
-- Run artifacts are stored under `results/<run_name>/`
-- Judge mode supports local-only or hybrid fallback
+All outputs saved in `evaluation/` folder:
 
-## Repository Layout
+- Responses:
+  - `evaluation/baseline_responses.txt`
+  - `evaluation/simple_rag_responses.txt`
+  - `evaluation/agentic_rag_responses.txt`
+- Aggregate metrics:
+  - `evaluation/evaluation_results.csv`
+- Query-level distribution metrics:
+  - `evaluation/query_level_scores.csv`
+- Analysis:
+  - `evaluation/analysis_report.md`
+  - `evaluation/failure_mode_summary.csv`
+  - `evaluation/failure_cases.csv`
+- Charts:
+  - `evaluation/charts/model_comparison.png`
+  - `evaluation/charts/latency_comparison.png`
+  - `evaluation/charts/idk_rate.png`
+  - `evaluation/charts/f1_distribution.png`
+  - `evaluation/charts/correctness_distribution.png`
 
-- `src/data/`: dataset acquisition and preprocessing
-- `src/agents/`: architecture implementations
-- `src/eval/`: metrics and LLM judge components
-- `src/pipeline/`: run → collect → evaluate → compare orchestration
-- `src/analysis/`: failure-mode analysis
-- `src/visualize/`: plots and charts
-- `data/`: prepared data artifacts and docs
-- `evaluation/`: evaluation protocol docs
+## Submission Notes
 
-## Deliverables
-
-- Benchmark pipeline and scripts
-- Configs for base and low-budget runs
-- Dataset documentation
-- Benchmark report template
-- Demo script
-
-See:
-
-- `ARCHITECTURE.md`
-- `BENCHMARKS.md`
-- `DATASET.md`
-- `REPORT.md`
-- `DEMO.md`
+- Public repo option: share GitHub URL.
+- Private repo option: add `uptiq-chaitanya` as collaborator.
+- Include demo link in `DEMO_VIDEO.md`.

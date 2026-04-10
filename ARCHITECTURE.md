@@ -1,95 +1,41 @@
-# Architecture
+# Architecture Overview
 
-## Goal
+## Systems Compared
 
-Provide a reproducible benchmark pipeline to compare **Simple RAG** and **Agentic RAG** across 1000+ QA tasks.
+### 1) Baseline (No Context Control)
+- Input: question only
+- Context: none
+- Output policy: always `I don't know`
+- Purpose: clean abstention baseline for calibration
 
-## System Components
+### 2) Simple RAG
+- Input: question
+- Retrieve: top-2 passages from ChromaDB
+- Generate: one answer pass with strict context-only prompt
+- Output: concise answer or `I don't know`
 
-1. **Data Preparation (`src/data/prepare_squad.py`)**
-	- Loads SQuAD v2 from Hugging Face `datasets`.
-	- Normalizes records into a canonical JSONL schema.
-	- Deterministically samples N records using a fixed seed.
+### 3) Agentic RAG (Improved)
+- Input: question
+- Step A: retrieve top-2 passages
+- Step B: LLM sufficiency check (`SUFFICIENT` / `INSUFFICIENT`)
+- Step C: if insufficient, expand retrieval to top-5 passages
+- Step D: generate candidate answer under strict prompt policy
+- Step E: grounding verifier (`SUPPORTED` / `UNSUPPORTED`)
+- Step F: if unsupported, return `I don't know`; else return candidate
 
-2. **Agents (`src/agents/`)**
-	- `simple_rag.py`: single-pass retrieve + answer.
-	- `agentic_rag.py`: iterative retrieve-refine loop with bounded steps.
+## Why Agentic Should Outperform Old Version
+- Removes brittle yes/no gating that previously blocked answer generation too early.
+- Adds fallback expanded retrieval when initial context is weak.
+- Adds grounding verification to reduce hallucinations.
 
-3. **Evaluation (`src/eval/`)**
-	- `metrics.py`: EM, F1, retrieval Recall@k, MRR.
-	- `judge.py`: rubric-based local judge; optional API fallback.
+## Unified Prompt Policy
+- Shared rule for all model calls:
+  - use only provided context
+  - if unsupported, output exactly `I don't know`
+  - output only final answer text
 
-4. **Pipeline (`src/pipeline/run_benchmark.py`)**
-	- Executes `Run -> Collect -> Evaluate -> Compare`.
-	- Produces run-level artifacts in `results/<run_name>/`.
-
-5. **Analysis + Visualization**
-	- `src/analysis/analyze_failures.py`: failure mode categorization.
-	- `src/visualize/plots.py`: score distributions and architecture comparisons.
-
-## Data Contracts
-
-### Input Sample Schema
-
-```json
-{
-  "id": "string",
-  "question": "string",
-  "context": "string",
-  "answers": ["string", "..."],
-  "is_impossible": false
-}
-```
-
-### Prediction Schema
-
-```json
-{
-  "id": "string",
-  "architecture": "simple_rag|agentic_rag",
-  "question": "string",
-  "predicted_answer": "string",
-  "gold_answers": ["string", "..."],
-  "retrieved_contexts": ["string", "..."],
-  "latency_ms": 0.0,
-  "trace": {
-	 "steps": ["retrieve", "answer"]
-  }
-}
-```
-
-### Evaluation Record Schema
-
-```json
-{
-  "id": "string",
-  "architecture": "simple_rag",
-  "em": 0,
-  "f1": 0.0,
-  "recall_at_k": 0.0,
-  "mrr": 0.0,
-  "judge_correctness": 1,
-  "judge_completeness": 1,
-  "judge_reasoning": 1
-}
-```
-
-## Execution Flow
-
-1. **Prepare Data**
-2. **Run Both Architectures on Same Samples**
-3. **Compute Quantitative Metrics**
-4. **Run Judge Evaluation**
-5. **Aggregate + Compare + Save Artifacts**
-
-## Reproducibility Guarantees
-
-- Seeded sampling and run naming
-- Config-driven parameters
-- Versioned output artifacts
-- Explicit judge mode (`local`, `hybrid`, `api`)
-
-## Trade-offs
-
-- Low-budget mode prioritizes deterministic local scoring and optional small judge sample.
-- Agentic RAG is expected to improve completeness but may increase latency/cost.
+## Generated Artifacts (in `evaluation/` folder)
+- Responses: `baseline_responses.txt`, `simple_rag_responses.txt`, `agentic_rag_responses.txt`
+- Metrics: `evaluation_results.csv` (pipeline-level), `query_level_scores.csv` (per-query scores)
+- Failure analysis: `failure_mode_summary.csv`, `failure_cases.csv`, `analysis_report.md`
+- Visualizations: `charts/model_comparison.png`, `charts/latency_comparison.png`, `charts/idk_rate.png`, `charts/f1_distribution.png`, `charts/correctness_distribution.png`
