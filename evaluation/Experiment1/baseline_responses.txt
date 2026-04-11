@@ -1020,6 +1020,7 @@ I don't know
 I don't know
 I don't know
 I don't know
+don<|start_header_id|>assistant<|end_header_id|> don't know.
 I don't know
 I don't know
 I don't know
@@ -1058,8 +1059,7 @@ I don't know
 I don't know
 I don't know
 I don't know
-I don't know
-I don't know
+don<|start_header_id|>assistant<|end_header_id|> don't know.
 I don't know
 I don't know
 I don't know

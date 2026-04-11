@@ -20,8 +20,9 @@ flowchart TD
 
 ```mermaid
 flowchart LR
+    CFG[Load YAML Config] --> R[Run]
     R[Run] --> C[Collect Responses]
-    C --> E[Evaluate Metrics]
+    C --> E[Evaluate Metrics: EM/F1 + LLM Judge + Retrieval Hit@k/MRR/ContextF1]
     E --> P[Compare Pipelines]
     P --> A[Analyze Failures]
     A --> V[Visualize]

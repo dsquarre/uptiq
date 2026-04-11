@@ -2,6 +2,7 @@ import json
 import re
 import argparse
 import os
+import yaml
 from sentence_transformers import SentenceTransformer
 import chromadb
 import ollama
@@ -83,17 +84,34 @@ def db(context, model):
 def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark Baseline, Simple RAG, and Agentic RAG.")
     parser.add_argument(
+        "--config",
+        default="configs/benchmark.base.yaml",
+        help="Path to YAML benchmark config file (default: configs/benchmark.base.yaml)",
+    )
+    parser.add_argument(
         "--dataset",
-        default="data/val_benchmark_1200.jsonl",
-        help="Path to JSONL dataset file (default: data/val_benchmark_1200.jsonl)",
+        default=None,
+        help="Path to JSONL dataset file. Overrides config if provided.",
     )
     parser.add_argument(
         "--max-queries",
         type=int,
         default=None,
-        help="Optional cap for number of queries to evaluate.",
+        help="Optional cap for number of queries to evaluate. Overrides config if provided.",
     )
     return parser.parse_args()
+
+def load_config(config_path):
+    with open(config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+def resolve_dataset_path(dataset_path):
+    if os.path.exists(dataset_path):
+        return dataset_path
+    candidate = os.path.join("data", dataset_path)
+    if os.path.exists(candidate):
+        return candidate
+    return dataset_path
 
 def write_failure_analysis(questions, answers, baseline_responses, simple_responses, agentic_responses):
     pipelines = {
@@ -139,15 +157,21 @@ def write_failure_analysis(questions, answers, baseline_responses, simple_respon
             if normalize(b) != normalize(truth) or normalize(s) != normalize(truth) or normalize(a) != normalize(truth):
                 writer.writerow([q, truth, b, s, a])
 
-def write_analysis_report(results, total_queries):
+def write_analysis_report(results, total_queries, setup_time=None):
     by_name = {row["Pipeline"]: row for row in results}
     lines = [
         "# Benchmark Analysis",
         "",
         f"Total queries evaluated: {total_queries}",
+    ]
+    
+    if setup_time is not None:
+        lines.append(f"Database setup time: {setup_time:.2f}s")
+    
+    lines.extend([
         "",
         "## Strengths",
-    ]
+    ])
 
     best_em = max(results, key=lambda r: r["Exact Match"])
     best_f1 = max(results, key=lambda r: r["F1 Score"])
@@ -181,7 +205,7 @@ def write_analysis_report(results, total_queries):
         f.write("\n".join(lines) + "\n")
 
 
-def write_charts(results):
+def write_charts(results, save_query_level_scores=True):
     os.makedirs("evaluation/charts", exist_ok=True)
 
     pipelines = [row["Pipeline"] for row in results]
@@ -226,7 +250,7 @@ def write_charts(results):
                 "Faithfulness": faith_raw[i],
             })
 
-    if distribution_rows:
+    if distribution_rows and save_query_level_scores:
         with open("evaluation/query_level_scores.csv", "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=distribution_rows[0].keys())
             writer.writeheader()
@@ -336,11 +360,11 @@ def baseline(questions):
     return baseline_responses
 
 #simple rag
-def simple_rag(questions,model,collection):
+def simple_rag(questions, model, collection, top_k):
     simple = []
     for i, q in enumerate(questions):
         qe = model.encode(q)
-        con = collection.query(query_embeddings=[qe.tolist()],n_results=5)
+        con = collection.query(query_embeddings=[qe.tolist()], n_results=top_k)
         
         # Join retrieved documents into a prompt context block.
         context_text = "\n".join(con['documents'][0])
@@ -353,11 +377,11 @@ def simple_rag(questions,model,collection):
     return simple
 
 #agentic rag
-def agentic_rag(questions,model,collection):
+def agentic_rag(questions, model, collection, first_top_k, second_top_k):
     agentic = []
     for i, q in enumerate(questions):
         qe = model.encode(q)
-        first_pass = collection.query(query_embeddings=[qe.tolist()], n_results=5)
+        first_pass = collection.query(query_embeddings=[qe.tolist()], n_results=first_top_k)
         first_context = "\n".join(first_pass['documents'][0])
 
         suff_prompt = (
@@ -370,7 +394,7 @@ def agentic_rag(questions,model,collection):
 
         final_context = first_context
         if "INSUFFICIENT" in suff_decision:
-            second_pass = collection.query(query_embeddings=[qe.tolist()], n_results=5)
+            second_pass = collection.query(query_embeddings=[qe.tolist()], n_results=second_top_k)
             final_context = "\n".join(second_pass['documents'][0])
 
         ans_prompt = build_qa_prompt(final_context, q)
@@ -396,17 +420,39 @@ def agentic_rag(questions,model,collection):
     return agentic
 
 def main():
+    global MODEL_NAME
     args = parse_args()
+    cfg = load_config(args.config)
+
+    dataset = resolve_dataset_path(args.dataset or cfg.get("dataset", "data/val_benchmark_1200.jsonl"))
+    max_queries = args.max_queries if args.max_queries is not None else cfg.get("max_queries")
+    MODEL_NAME = cfg.get("model_name", MODEL_NAME)
+
+    retrieval_cfg = cfg.get("retrieval", {})
+    simple_top_k = int(retrieval_cfg.get("simple_top_k", 5))
+    agentic_first_top_k = int(retrieval_cfg.get("agentic_first_top_k", 5))
+    agentic_second_top_k = int(retrieval_cfg.get("agentic_second_top_k", 5))
+
+    evaluation_cfg = cfg.get("evaluation", {})
+    run_llm_judge = bool(evaluation_cfg.get("run_llm_judge", True))
+
+    output_cfg = cfg.get("output", {})
+    save_charts = bool(output_cfg.get("save_charts", True))
+    save_query_level_scores = bool(output_cfg.get("save_query_level_scores", True))
+
+    embedding_model_name = cfg.get("embedding_model", "all-MiniLM-L6-v2")
+
     start_setup = time.time()
-    questions,context,answers = load_json(args.dataset, args.max_queries)
-    print(f"Loaded {len(questions)} queries from {args.dataset}")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    questions,context,answers = load_json(dataset, max_queries)
+    print(f"Loaded {len(questions)} queries from {dataset}")
+    print(f"Using model={MODEL_NAME}, embedding={embedding_model_name}, simple_top_k={simple_top_k}, agentic_first_top_k={agentic_first_top_k}, agentic_second_top_k={agentic_second_top_k}")
+    model = SentenceTransformer(embedding_model_name)
     collection = db(context, model)
     end_setup = time.time()
     print(f"Data loading and DB setup took {end_setup - start_setup:.2f} seconds.")
 
     # Evaluate ChromaDB retrieval accuracy first
-    calculate_retrieval_metrics(questions, context)
+    retrieval_metrics = calculate_retrieval_metrics(questions, context, embedding_model_name=embedding_model_name)
 
     results = []
 
@@ -419,36 +465,37 @@ def main():
     end_baseline = time.time()
     baseline_latency = end_baseline - start_baseline
     print(f"Baseline evaluation took {baseline_latency:.2f} seconds.")
-    results.append(evaluate_pipeline("Baseline", baseline_responses, questions, context, answers, baseline_latency))
+    results.append(evaluate_pipeline("Baseline", baseline_responses, questions, context, answers, baseline_latency, retrieval_metrics, run_llm_judge))
     
     start_simple = time.time()
     print("Running Simple RAG evaluation...")
-    simple_responses = simple_rag(questions,model,collection)
+    simple_responses = simple_rag(questions, model, collection, simple_top_k)
     with open('evaluation/simple_rag_responses.txt', 'w', encoding='utf-8') as f:
         for response in simple_responses:
             f.write(response + '\n')
     end_simple = time.time()
     simple_latency = end_simple - start_simple
     print(f"Simple RAG evaluation took {simple_latency:.2f} seconds.")
-    results.append(evaluate_pipeline("Simple RAG", simple_responses, questions, context, answers, simple_latency))
+    results.append(evaluate_pipeline("Simple RAG", simple_responses, questions, context, answers, simple_latency, retrieval_metrics, run_llm_judge))
 
     start_agentic = time.time()
     print("Running Agentic RAG evaluation...")
-    agentic_responses = agentic_rag(questions, model, collection)
+    agentic_responses = agentic_rag(questions, model, collection, agentic_first_top_k, agentic_second_top_k)
     with open('evaluation/agentic_rag_responses.txt', 'w', encoding='utf-8') as f:
         for response in agentic_responses:
             f.write(response + '\n')
     end_agentic = time.time()
     agentic_latency = end_agentic - start_agentic
     print(f"Agentic RAG evaluation took {agentic_latency:.2f} seconds.")
-    results.append(evaluate_pipeline("Agentic RAG", agentic_responses, questions, context, answers, agentic_latency))
+    results.append(evaluate_pipeline("Agentic RAG", agentic_responses, questions, context, answers, agentic_latency, retrieval_metrics, run_llm_judge))
 
     write_failure_analysis(questions, answers, baseline_responses, simple_responses, agentic_responses)
     print("Saved failure analysis to failure_mode_summary.csv and failure_cases.csv")
-    write_analysis_report(results, len(questions))
+    write_analysis_report(results, len(questions), setup_time=end_setup - start_setup)
     print("Saved analysis report to analysis_report.md")
-    write_charts(results)
-    print("Saved charts to charts/")
+    if save_charts:
+        write_charts(results, save_query_level_scores=save_query_level_scores)
+        print("Saved charts to evaluation/charts/")
 
     if results:
         csv_filename = "evaluation/evaluation_results.csv"
