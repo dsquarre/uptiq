@@ -27,7 +27,7 @@ This repo satisfies the assignment requirements:
 
 1. **Baseline** (Control): No context → always returns "I don't know" (deterministic abstention).
 2. **Simple RAG**: Retrieve top-k passages → generate single answer → post-process.
-3. **Agentic RAG**: Retrieve top-k → sufficiency check → (optional) expanded retrieval → generate answer → grounding verifier.
+3. **Agentic RAG**: Retrieve top-k → draft answer → answer-guided second retrieval → merge contexts → generate answer → grounding verifier.
 
 ## Dataset
 
@@ -87,6 +87,10 @@ python src/main.py --config configs/benchmark.base.yaml --dataset data/val_bench
   - `retrieval.simple_top_k`
   - `retrieval.agentic_first_top_k`
   - `retrieval.agentic_second_top_k`
+- answer policy:
+  - `answering.strict_context_only`
+    - `true`: only answer when the prompt context supports it
+    - `false`: allow a best-effort draft answer before final verification
 - evaluation toggle:
   - `evaluation.run_llm_judge`
 - output toggles:
@@ -106,6 +110,7 @@ All outputs saved in `evaluation/` folder:
 - Retrieval quality metrics in results:
   - `Retrieval Hit@1`, `Retrieval Hit@3`, `Retrieval Hit@5`
   - `Retrieval MRR@5`, `Retrieval Context F1@5`
+- Agentic RAG now performs answer-guided second-pass retrieval and merges both retrieval passes before the final answer.
 - Query-level distribution metrics:
   - `evaluation/query_level_scores.csv`
 - Analysis:

@@ -1,5 +1,7 @@
 # Benchmark Analysis
 
+Note: Experiment1 used the earlier strict agentic flow. The current implementation now uses answer-guided second-pass retrieval with merged contexts for Agentic RAG.
+
 Total queries evaluated: 1200
 Database setup time: 827.99s
 

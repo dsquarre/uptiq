@@ -11,3 +11,5 @@ evaluation:
 output:
   save_charts: true
   save_query_level_scores: true
+answering:
+  strict_context_only: false

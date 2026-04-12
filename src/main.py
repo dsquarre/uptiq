@@ -14,15 +14,24 @@ from evaluate import evaluate_pipeline, calculate_retrieval_metrics
 MODEL_NAME = "llama3.2:1b"
 
 
-def build_qa_prompt(context_text, question, force_idk=False):
-    rules = (
-        "You are a strict QA evaluator. "
-        "Use only the given Context. "
-        "If the Context is missing or does not support the answer, output exactly: I don't know. "
-        "Output only the final answer text."
-    )
+def build_qa_prompt(context_text, question, force_idk=False, strict_context_only=True):
+    if strict_context_only:
+        rules = (
+            "You are a strict QA evaluator. "
+            "Use only the given Context. "
+            "If the Context is missing or does not support the answer, output exactly: I don't know. "
+            "Output only the final answer text."
+        )
+    else:
+        rules = (
+            "You are a helpful QA assistant. "
+            "Use the Context when it is relevant, but do not refuse to answer by default. "
+            "If the Context does not contain the answer, use your best grounded answer when possible; "
+            "otherwise output exactly: I don't know. "
+            "Output only the final answer text."
+        )
     if force_idk:
-        rules += " No context is available in this task, so your only valid answer is: I don't know."
+        rules += " No context is available in this task. Only valid answer is 'I don't know.'"
 
     return (
         f"Instruction: {rules}\n\n"
@@ -68,14 +77,16 @@ def load_json(file_path, max_queries=None):
 
 def db(context, model):
     client = chromadb.PersistentClient(path="./chroma_db")
-    # Force recreation to ensure embeddings match the current dataset and model
     try:
-        client.delete_collection(name="vector")
+        collection = client.get_collection(name="vector")
+        if collection is not None:
+            print("Using existing ChromaDB collection.")
+            return collection
     except Exception:
         pass
+    print('Creating new ChromaDB collection.')
     collection = client.create_collection(name="vector")
     
-    print("Populating ChromaDB with fresh embeddings...")
     embeddings = model.encode(context, batch_size=256, show_progress_bar=True)
     ids = [f'id{i}' for i in range(len(context))]
     collection.add(ids=ids, embeddings=embeddings.tolist(), documents=context)
@@ -157,7 +168,7 @@ def write_failure_analysis(questions, answers, baseline_responses, simple_respon
             if normalize(b) != normalize(truth) or normalize(s) != normalize(truth) or normalize(a) != normalize(truth):
                 writer.writerow([q, truth, b, s, a])
 
-def write_analysis_report(results, total_queries, setup_time=None):
+def write_analysis_report(results, total_queries, setup_time=None, retrieval_metrics=None):
     by_name = {row["Pipeline"]: row for row in results}
     lines = [
         "# Benchmark Analysis",
@@ -195,6 +206,14 @@ def write_analysis_report(results, total_queries, setup_time=None):
         )
 
     lines.append("")
+    if retrieval_metrics:
+        lines.append("## Retrieval")
+        lines.append(f"- Retrieval Hit@1: {retrieval_metrics.get('Retrieval Hit@1', 0.0):.4f}")
+        lines.append(f"- Retrieval Hit@3: {retrieval_metrics.get('Retrieval Hit@3', 0.0):.4f}")
+        lines.append(f"- Retrieval Hit@5: {retrieval_metrics.get('Retrieval Hit@5', 0.0):.4f}")
+        lines.append(f"- Retrieval MRR@5: {retrieval_metrics.get('Retrieval MRR@5', 0.0):.4f}")
+        lines.append(f"- Retrieval Context F1@5: {retrieval_metrics.get('Retrieval Context F1@5', 0.0):.4f}")
+        lines.append("")
     lines.append("## Failure Modes")
     lines.append("- Abstention overuse: high rates of 'I don't know' responses lower recall.")
     lines.append("- Retrieval misses: relevant context not in top-k yields incorrect or empty answers.")
@@ -352,15 +371,15 @@ def post_process(question, response):
     resp = strip_grammar(resp)
     return resp
 
-def baseline(questions):
+def baseline(questions,strict_context_only=True):
     baseline_responses = []
     for q in questions:
-        _prompt = build_qa_prompt("", q, force_idk=True)
+        _prompt = build_qa_prompt("", q, force_idk=strict_context_only, strict_context_only=strict_context_only)
         baseline_responses.append(post_process(q,llm_generate(_prompt)))
     return baseline_responses
 
 #simple rag
-def simple_rag(questions, model, collection, top_k):
+def simple_rag(questions, model, collection, top_k, strict_context_only=True):
     simple = []
     for i, q in enumerate(questions):
         qe = model.encode(q)
@@ -368,7 +387,7 @@ def simple_rag(questions, model, collection, top_k):
         
         # Join retrieved documents into a prompt context block.
         context_text = "\n".join(con['documents'][0])
-        prompt = build_qa_prompt(context_text, q)
+        prompt = build_qa_prompt(context_text, q, strict_context_only=strict_context_only)
         raw_resp = llm_generate(prompt)
         simple.append(post_process(q, raw_resp))
         
@@ -376,33 +395,46 @@ def simple_rag(questions, model, collection, top_k):
             print(f"Simple RAG: Processed {i + 1}/{len(questions)} requests...")
     return simple
 
+def merge_retrieved_contexts(*context_lists):
+    merged = []
+    seen = set()
+    for context_list in context_lists:
+        for context in context_list:
+            normalized = context.strip()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                merged.append(context)
+    return merged
+
+def build_agentic_retrieval_query(question, draft_answer):
+    if draft_answer and draft_answer != "I don't know":
+        return f"{question}\nLikely answer: {draft_answer}"
+    return question
+
 #agentic rag
-def agentic_rag(questions, model, collection, first_top_k, second_top_k):
+def agentic_rag(questions, model, collection, first_top_k, second_top_k, strict_context_only=True):
     agentic = []
     for i, q in enumerate(questions):
         qe = model.encode(q)
         first_pass = collection.query(query_embeddings=[qe.tolist()], n_results=first_top_k)
         first_context = "\n".join(first_pass['documents'][0])
 
-        suff_prompt = (
-            f"Context:\n{first_context}\n\n"
-            f"Question: {q}\n"
-            "Is this context sufficient to answer the question exactly? "
-            "Reply with only SUFFICIENT or INSUFFICIENT."
-        )
-        suff_decision = llm_generate(suff_prompt).strip().upper()
+        draft_prompt = build_qa_prompt(first_context, q, strict_context_only=strict_context_only)
+        draft_answer = post_process(q, llm_generate(draft_prompt))
 
-        final_context = first_context
-        if "INSUFFICIENT" in suff_decision:
-            second_pass = collection.query(query_embeddings=[qe.tolist()], n_results=second_top_k)
-            final_context = "\n".join(second_pass['documents'][0])
+        retrieval_query = build_agentic_retrieval_query(q, draft_answer)
+        retrieval_embedding = model.encode(retrieval_query)
+        second_pass = collection.query(query_embeddings=[retrieval_embedding.tolist()], n_results=second_top_k)
 
-        ans_prompt = build_qa_prompt(final_context, q)
+        merged_docs = merge_retrieved_contexts(first_pass['documents'][0], second_pass['documents'][0])
+        merged_context = "\n".join(merged_docs)
+
+        ans_prompt = build_qa_prompt(merged_context, q, strict_context_only=strict_context_only)
         candidate = post_process(q, llm_generate(ans_prompt))
 
         if candidate != "I don't know":
             verify_prompt = (
-                f"Context:\n{final_context}\n\n"
+                f"Context:\n{merged_context}\n\n"
                 f"Question: {q}\n"
                 f"Proposed Answer: {candidate}\n"
                 "Is the proposed answer fully supported by the context? "
@@ -436,6 +468,9 @@ def main():
     evaluation_cfg = cfg.get("evaluation", {})
     run_llm_judge = bool(evaluation_cfg.get("run_llm_judge", True))
 
+    answering_cfg = cfg.get("answering", {})
+    strict_context_only = bool(answering_cfg.get("strict_context_only", True))
+
     output_cfg = cfg.get("output", {})
     save_charts = bool(output_cfg.get("save_charts", True))
     save_query_level_scores = bool(output_cfg.get("save_query_level_scores", True))
@@ -445,7 +480,7 @@ def main():
     start_setup = time.time()
     questions,context,answers = load_json(dataset, max_queries)
     print(f"Loaded {len(questions)} queries from {dataset}")
-    print(f"Using model={MODEL_NAME}, embedding={embedding_model_name}, simple_top_k={simple_top_k}, agentic_first_top_k={agentic_first_top_k}, agentic_second_top_k={agentic_second_top_k}")
+    print(f"Using model={MODEL_NAME}, embedding={embedding_model_name}, simple_top_k={simple_top_k}, agentic_first_top_k={agentic_first_top_k}, agentic_second_top_k={agentic_second_top_k}, strict_context_only={strict_context_only}")
     model = SentenceTransformer(embedding_model_name)
     collection = db(context, model)
     end_setup = time.time()
@@ -469,29 +504,29 @@ def main():
     
     start_simple = time.time()
     print("Running Simple RAG evaluation...")
-    simple_responses = simple_rag(questions, model, collection, simple_top_k)
+    simple_responses = simple_rag(questions, model, collection, simple_top_k, strict_context_only=strict_context_only)
     with open('evaluation/simple_rag_responses.txt', 'w', encoding='utf-8') as f:
         for response in simple_responses:
             f.write(response + '\n')
     end_simple = time.time()
     simple_latency = end_simple - start_simple
     print(f"Simple RAG evaluation took {simple_latency:.2f} seconds.")
-    results.append(evaluate_pipeline("Simple RAG", simple_responses, questions, context, answers, simple_latency, retrieval_metrics, run_llm_judge))
+    results.append(evaluate_pipeline("Simple RAG", simple_responses, questions, context, answers, simple_latency, None, run_llm_judge))
 
     start_agentic = time.time()
     print("Running Agentic RAG evaluation...")
-    agentic_responses = agentic_rag(questions, model, collection, agentic_first_top_k, agentic_second_top_k)
+    agentic_responses = agentic_rag(questions, model, collection, agentic_first_top_k, agentic_second_top_k, strict_context_only=strict_context_only)
     with open('evaluation/agentic_rag_responses.txt', 'w', encoding='utf-8') as f:
         for response in agentic_responses:
             f.write(response + '\n')
     end_agentic = time.time()
     agentic_latency = end_agentic - start_agentic
     print(f"Agentic RAG evaluation took {agentic_latency:.2f} seconds.")
-    results.append(evaluate_pipeline("Agentic RAG", agentic_responses, questions, context, answers, agentic_latency, retrieval_metrics, run_llm_judge))
+    results.append(evaluate_pipeline("Agentic RAG", agentic_responses, questions, context, answers, agentic_latency, None, run_llm_judge))
 
     write_failure_analysis(questions, answers, baseline_responses, simple_responses, agentic_responses)
     print("Saved failure analysis to failure_mode_summary.csv and failure_cases.csv")
-    write_analysis_report(results, len(questions), setup_time=end_setup - start_setup)
+    write_analysis_report(results, len(questions), setup_time=end_setup - start_setup, retrieval_metrics=retrieval_metrics)
     print("Saved analysis report to analysis_report.md")
     if save_charts:
         write_charts(results, save_query_level_scores=save_query_level_scores)

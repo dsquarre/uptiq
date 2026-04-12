@@ -7,13 +7,13 @@ flowchart TD
     A[Question] --> B[Retrieve top-k]
     B --> C{Agentic?}
     C -->|No| D[Simple RAG Answer]
-    C -->|Yes| E[Sufficiency Check]
-    E -->|Sufficient| F[Answer Generation]
-    E -->|Insufficient| G[Expanded Retrieval]
-    G --> F
-    F --> H[Grounding Verifier]
-    H -->|Supported| I[Final Answer]
-    H -->|Unsupported| J[I don't know]
+    C -->|Yes| E[Draft Answer from First Context]
+    E --> F[Answer-Guided Second Retrieval]
+    F --> G[Merge Contexts]
+    G --> H[Final Answer Generation]
+    H --> I[Grounding Verifier]
+    I -->|Supported| J[Final Answer]
+    I -->|Unsupported| K[I don't know]
 ```
 
 ## Evaluation Flow Diagram
@@ -27,3 +27,7 @@ flowchart LR
     P --> A[Analyze Failures]
     A --> V[Visualize]
 ```
+
+## Experiment2 Note
+
+Experiment2 enables `answering.strict_context_only: false` so the agentic pipeline can draft a best-effort answer before the verification pass.
