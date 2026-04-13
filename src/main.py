@@ -402,12 +402,14 @@ def simple_rag(questions, model, collection, top_k, strict_context_only=True):
 #agentic rag
 def agentic_rag(questions, model, collection, first_top_k, second_top_k, strict_context_only=True):
     agentic = []
+    prompts = []
     for i, q in enumerate(questions):
         qe = model.encode(q).tolist()
         initial_results = collection.query(query_embeddings=[qe], n_results=first_top_k)
         context = "\n".join(initial_results['documents'][0])
-        prompt = f"Given the question and retrieved context, return a query which will best extract the answer for the questionfrom the vector database.\nQuestion:'{q}'\nRetrieved Context: {context}"
+        prompt = f"Question:'{q}'\nRetrieved Context: {context}\nGiven the question and retrieved context from it, create a new prompt with keywords that can be used to query the vector database and extract the best context for the question."
         new_query = llm_generate(prompt).strip()
+        prompts.append(new_query)
         qe= model.encode(new_query).tolist()
         second_pass = collection.query(query_embeddings=[qe], n_results=second_top_k)
         context = "\n".join(second_pass['documents'][0])
@@ -417,7 +419,7 @@ def agentic_rag(questions, model, collection, first_top_k, second_top_k, strict_
         if (i + 1) % 100 == 0:
             print(f"Processed {i + 1}/{len(questions)}")
             
-    return agentic
+    return agentic,prompts
 
 def main():
     global MODEL_NAME
@@ -456,11 +458,7 @@ def main():
     end_setup = time.time()
     print(f"Data loading and DB setup took {end_setup - start_setup:.2f} seconds.")
 
-    # Evaluate ChromaDB retrieval accuracy first
-    retrieval_metrics = calculate_retrieval_metrics(questions, context, embedding_model_name=embedding_model_name, collection_name=config_name)
-
     results = []
-
     start_baseline = time.time()
     print("Running Baseline...")
     baseline_responses = baseline(questions,strict_context_only)
@@ -469,7 +467,7 @@ def main():
             f.write(response + '\n')
     end_baseline = time.time()
     baseline_latency = end_baseline - start_baseline
-    print(f"Baseline evaluation took {baseline_latency:.2f} seconds.")
+    print(f"Baseline took {baseline_latency:.2f} seconds.")
     results.append(evaluate_pipeline("Baseline", baseline_responses, questions, context, answers, baseline_latency, None, run_llm_judge))
     
     start_simple = time.time()
@@ -479,20 +477,23 @@ def main():
         for response in simple_responses:
             f.write(response + '\n')
     end_simple = time.time()
+    retrieval_metrics = calculate_retrieval_metrics(questions, context, embedding_model_name=embedding_model_name, collection_name=config_name)
+
     simple_latency = end_simple - start_simple
     print(f"Simple RAG took {simple_latency:.2f} seconds.")
-    results.append(evaluate_pipeline("Simple RAG", simple_responses, questions, context, answers, simple_latency, None, run_llm_judge))
+    results.append(evaluate_pipeline("Simple RAG", simple_responses, questions, context, answers, simple_latency, retrieval_metrics, run_llm_judge))
 
     start_agentic = time.time()
     print("Running Agentic RAG...")
-    agentic_responses = agentic_rag(questions, model, collection, agentic_first_top_k, agentic_second_top_k, strict_context_only=strict_context_only)
+    agentic_responses,prompts = agentic_rag(questions, model, collection, agentic_first_top_k, agentic_second_top_k, strict_context_only=strict_context_only)
     with open('evaluation/agentic_rag_responses.txt', 'w', encoding='utf-8') as f:
         for response in agentic_responses:
             f.write(response + '\n')
     end_agentic = time.time()
+    retrieval_metrics_agentic = calculate_retrieval_metrics(prompts, context, embedding_model_name=embedding_model_name, collection_name=config_name)
     agentic_latency = end_agentic - start_agentic
     print(f"Agentic RAG took {agentic_latency:.2f} seconds.")
-    results.append(evaluate_pipeline("Agentic RAG", agentic_responses, questions, context, answers, agentic_latency, None, run_llm_judge))
+    results.append(evaluate_pipeline("Agentic RAG", agentic_responses, questions, context, answers, agentic_latency, retrieval_metrics_agentic, run_llm_judge))
 
     write_failure_analysis(questions, answers, baseline_responses, simple_responses, agentic_responses)
     print("Saved failure analysis to failure_mode_summary.csv and failure_cases.csv")

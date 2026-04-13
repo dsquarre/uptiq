@@ -1,25 +1,25 @@
 # Benchmark Analysis
 
-Total queries evaluated: 10
-Database setup time: 7.87s
+Total queries evaluated: 5
+Database setup time: 7.92s
 
 ## Strengths
-- Best Exact Match: Simple RAG (0.6000)
-- Best F1 Score: Simple RAG (0.3516)
-- Best Faithfulness: Agentic RAG (0.7700)
-- Fastest latency/request: Baseline (1.98s)
+- Best Exact Match: Agentic RAG (0.8000)
+- Best F1 Score: Simple RAG (0.5889)
+- Best Faithfulness: Simple RAG (1.0000)
+- Fastest latency/request: Baseline (1.39s)
 
 ## Weaknesses
-- Baseline: EM=0.1000, F1=0.0213, Reasoning=0.5100, Faithfulness=0.5300
-- Simple RAG: EM=0.6000, F1=0.3516, Reasoning=0.6000, Faithfulness=0.7600
-- Agentic RAG: EM=0.3000, F1=0.1994, Reasoning=0.5600, Faithfulness=0.7700
+- Baseline: EM=0.0000, F1=0.0000, Reasoning=0.2200, Faithfulness=0.5600
+- Simple RAG: EM=0.6000, F1=0.5889, Reasoning=0.4200, Faithfulness=1.0000
+- Agentic RAG: EM=0.8000, F1=0.4944, Reasoning=0.7400, Faithfulness=0.7000
 
 ## Retrieval
-- Retrieval Hit@1: 0.5000
-- Retrieval Hit@3: 0.7000
-- Retrieval Hit@5: 0.8000
-- Retrieval MRR@5: 0.6083
-- Retrieval Context F1@5: 0.8271
+- Retrieval Hit@1: 0.6000
+- Retrieval Hit@3: 1.0000
+- Retrieval Hit@5: 1.0000
+- Retrieval MRR@5: 0.7667
+- Retrieval Context F1@5: 1.0000
 
 ## Failure Modes
 - Abstention overuse: high rates of 'I don't know' responses lower recall.

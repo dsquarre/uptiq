@@ -1,6 +1,6 @@
 dataset: val_benchmark_1200.jsonl
 max_queries: null
-model_name: llama3.2:1b
+model_name: mistral:latest
 embedding_model: BAAI/bge-large-en-v1.5
 retrieval:
   simple_top_k: 3

@@ -5,7 +5,7 @@ embedding_model: BAAI/bge-large-en-v1.5
 retrieval:
   simple_top_k: 3
   agentic_first_top_k: 3
-  agentic_second_top_k: 6
+  agentic_second_top_k: 5
 evaluation:
   run_llm_judge: true
 output:

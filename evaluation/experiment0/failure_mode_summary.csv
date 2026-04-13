@@ -1,4 +1,4 @@
 Pipeline,Exact Match Count,I don't know Count,Total
-Baseline,2,0,10
-Simple RAG,6,0,10
-Agentic RAG,6,0,10
+Baseline,0,0,5
+Simple RAG,3,0,5
+Agentic RAG,4,0,5
