@@ -1,6 +1,7 @@
 dataset: val_benchmark_1200.jsonl
 max_queries: 200
 model_name: llama3.2:1b
+embedding_model: all-MiniLM-L6-v2
 retrieval:
   simple_top_k: 2
   agentic_first_top_k: 2
