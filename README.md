@@ -82,10 +82,15 @@ ollama pull mistral:latest
 
 ## Run
 
-Full run:
+Full run with llama LLM and stricter context policy:
 
 ```bash
 python src/main.py --config configs/experiment1.yaml
+```
+Full run with mistral LLM and relaxed context policy:
+
+```bash
+python src/main.py --config configs/experiment2.yaml --dataset data/val_benchmark_1200.jsonl --max-queries 100
 ```
 
 Low-budget smoke test:
@@ -94,11 +99,10 @@ Low-budget smoke test:
 python src/main.py --config configs/benchmark.low_budget.yaml
 ```
 
-Override dataset / max queries from CLI:
+Demo run Youtube video:
 
-```bash
-python src/main.py --config configs/experiment2.yaml --dataset data/val_benchmark_1200.jsonl --max-queries 100
-```
+https://youtu.be/znjkSgxNDRI
+
 
 ## Re-run Note
 
