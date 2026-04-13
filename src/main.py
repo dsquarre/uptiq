@@ -226,7 +226,10 @@ def write_charts(results, save_query_level_scores=True):
     pipelines = [row["Pipeline"] for row in results]
     em = [row["Exact Match"] for row in results]
     f1 = [row["F1 Score"] for row in results]
-    faith = [row["LLM Faithfulness"] for row in results]
+    correctness = [row["LLM Correctness"] for row in results]
+    completeness = [row["LLM Completeness"] for row in results]
+    reasoning = [row["LLM Reasoning"] for row in results]
+    faithfulness = [row["LLM Faithfulness"] for row in results]
     latency = [row["Latency per request (s)"] for row in results]
 
     # Extract raw scores for distribution plots and remove them so they don't pollute the CSV
@@ -271,18 +274,21 @@ def write_charts(results, save_query_level_scores=True):
             writer.writeheader()
             writer.writerows(distribution_rows)
 
-    # Comparison chart for core quality metrics.
+    # Comparison chart for all quality metrics (QA + LLM Judge).
     x = list(range(len(pipelines)))
-    w = 0.22
-    plt.figure(figsize=(10, 5))
-    plt.bar([i - w for i in x], em, width=w, label="Exact Match")
-    plt.bar(x, f1, width=w, label="F1 Score")
-    plt.bar([i + w for i in x], faith, width=w, label="Faithfulness")
+    w = 0.13
+    plt.figure(figsize=(12, 6))
+    plt.bar([i - 2.5*w for i in x], em, width=w, label="Exact Match")
+    plt.bar([i - 1.5*w for i in x], f1, width=w, label="F1 Score")
+    plt.bar([i - 0.5*w for i in x], correctness, width=w, label="Correctness")
+    plt.bar([i + 0.5*w for i in x], completeness, width=w, label="Completeness")
+    plt.bar([i + 1.5*w for i in x], reasoning, width=w, label="Reasoning")
+    plt.bar([i + 2.5*w for i in x], faithfulness, width=w, label="Faithfulness")
     plt.xticks(x, pipelines)
     plt.ylim(0, 1)
     plt.ylabel("Score")
-    plt.title("Model Quality Comparison")
-    plt.legend()
+    plt.title("Model Quality Comparison (QA + LLM Judge Metrics)")
+    plt.legend(loc="lower right", fontsize=9)
     plt.tight_layout()
     plt.savefig("evaluation/charts/model_comparison.png", dpi=140)
     plt.close()
@@ -456,7 +462,7 @@ def main():
     results = []
 
     start_baseline = time.time()
-    print("Running Baseline evaluation...")
+    print("Running Baseline...")
     baseline_responses = baseline(questions,strict_context_only)
     with open('evaluation/baseline_responses.txt', 'w', encoding='utf-8') as f:
         for response in baseline_responses:
@@ -467,25 +473,25 @@ def main():
     results.append(evaluate_pipeline("Baseline", baseline_responses, questions, context, answers, baseline_latency, None, run_llm_judge))
     
     start_simple = time.time()
-    print("Running Simple RAG evaluation...")
+    print("Running Simple RAG...")
     simple_responses = simple_rag(questions, model, collection, simple_top_k, strict_context_only=strict_context_only)
     with open('evaluation/simple_rag_responses.txt', 'w', encoding='utf-8') as f:
         for response in simple_responses:
             f.write(response + '\n')
     end_simple = time.time()
     simple_latency = end_simple - start_simple
-    print(f"Simple RAG evaluation took {simple_latency:.2f} seconds.")
+    print(f"Simple RAG took {simple_latency:.2f} seconds.")
     results.append(evaluate_pipeline("Simple RAG", simple_responses, questions, context, answers, simple_latency, None, run_llm_judge))
 
     start_agentic = time.time()
-    print("Running Agentic RAG evaluation...")
+    print("Running Agentic RAG...")
     agentic_responses = agentic_rag(questions, model, collection, agentic_first_top_k, agentic_second_top_k, strict_context_only=strict_context_only)
     with open('evaluation/agentic_rag_responses.txt', 'w', encoding='utf-8') as f:
         for response in agentic_responses:
             f.write(response + '\n')
     end_agentic = time.time()
     agentic_latency = end_agentic - start_agentic
-    print(f"Agentic RAG evaluation took {agentic_latency:.2f} seconds.")
+    print(f"Agentic RAG took {agentic_latency:.2f} seconds.")
     results.append(evaluate_pipeline("Agentic RAG", agentic_responses, questions, context, answers, agentic_latency, None, run_llm_judge))
 
     write_failure_analysis(questions, answers, baseline_responses, simple_responses, agentic_responses)

@@ -1,11 +1,11 @@
 dataset: val_benchmark_1200.jsonl
 max_queries: 10
-model_name: mistral:latest
+model_name: llama3.2:1b
 embedding_model: all-MiniLM-L6-v2
 retrieval:
-  simple_top_k: 3
-  agentic_first_top_k: 3
-  agentic_second_top_k: 6
+  simple_top_k: 2
+  agentic_first_top_k: 2
+  agentic_second_top_k: 4
 evaluation:
   run_llm_judge: true
 output:

@@ -100,6 +100,46 @@ Override dataset / max queries from CLI:
 python src/main.py --config configs/experiment2.yaml --dataset data/val_benchmark_1200.jsonl --max-queries 100
 ```
 
+## Re-run Note
+
+Due to minor code changes made close to the submission window, Experiments 1 and 2 should be re-run so that the reported artifacts fully reflect the latest implementation. The re-run was not completed before deadline because of time constraints.
+
+## Save Results Per Experiment
+
+After each run, copy the generated files from `evaluation/` into the matching archive directory.
+
+Run Experiment 1 and archive outputs:
+
+```bash
+python src/main.py --config configs/experiment1.yaml
+mkdir -p evaluation/charts/Experiment1/charts
+cp evaluation/agentic_rag_responses.txt evaluation/charts/Experiment1/
+cp evaluation/analysis_report.md evaluation/charts/Experiment1/
+cp evaluation/baseline_responses.txt evaluation/charts/Experiment1/
+cp evaluation/evaluation_results.csv evaluation/charts/Experiment1/
+cp evaluation/failure_cases.csv evaluation/charts/Experiment1/
+cp evaluation/failure_mode_summary.csv evaluation/charts/Experiment1/
+cp evaluation/query_level_scores.csv evaluation/charts/Experiment1/
+cp evaluation/simple_rag_responses.txt evaluation/charts/Experiment1/
+cp evaluation/charts/* evaluation/charts/Experiment1/charts/
+```
+
+Run Experiment 2 and archive outputs:
+
+```bash
+python src/main.py --config configs/experiment2.yaml
+mkdir -p evaluation/charts/Experiment2/charts
+cp evaluation/agentic_rag_responses.txt evaluation/charts/Experiment2/
+cp evaluation/analysis_report.md evaluation/charts/Experiment2/
+cp evaluation/baseline_responses.txt evaluation/charts/Experiment2/
+cp evaluation/evaluation_results.csv evaluation/charts/Experiment2/
+cp evaluation/failure_cases.csv evaluation/charts/Experiment2/
+cp evaluation/failure_mode_summary.csv evaluation/charts/Experiment2/
+cp evaluation/query_level_scores.csv evaluation/charts/Experiment2/
+cp evaluation/simple_rag_responses.txt evaluation/charts/Experiment2/
+cp evaluation/charts/* evaluation/charts/Experiment2/charts/
+```
+
 ## Config Keys
 
 Each YAML config can set:
@@ -125,7 +165,7 @@ Code fallback defaults (if omitted in config):
 
 - `configs/experiment1.yaml`: `llama3.2:1b`, strict context-only, BGE-large embedding
 - `configs/experiment2.yaml`: `mistral:latest`, relaxed context policy, BGE-large embedding
-- `configs/benchmark.low_budget.yaml`: 10 queries, `mistral:latest`, MiniLM embedding, relaxed context policy
+- `configs/benchmark.low_budget.yaml`: 10 queries, `llama3.2:1b`, MiniLM embedding, relaxed context policy
 
 ## Outputs
 
