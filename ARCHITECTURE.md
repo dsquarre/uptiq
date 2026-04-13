@@ -1,54 +1,92 @@
 # Architecture Overview
 
-## Systems Compared
+## Compared Pipelines
 
-### 1) Baseline (No Context Control)
+### 1) Baseline
 - Input: question only
-- Context: none
-- Output policy: always `I don't know`
-- Purpose: clean abstention baseline for calibration
+- Retrieval: none
+- Generation: QA prompt with empty context
+- Policy control:
+  - `answering.strict_context_only: true` forces abstention behavior (`I don't know`)
+  - `answering.strict_context_only: false` allows best-effort answering
+- Post-processing: normalization and lightweight answer cleanup
 
 ### 2) Simple RAG
 - Input: question
-- Retrieve: top-k passages from ChromaDB (configurable)
-- Generate: one answer pass with strict context-only prompt
-- Output: concise answer or `I don't know`
+- Retriever: SentenceTransformer embeddings + ChromaDB
+- Retrieval: single pass with `retrieval.simple_top_k`
+- Generation: one QA call using joined retrieved context
+- Post-processing: same normalization and cleanup as baseline
 
-### 3) Agentic RAG 
+### 3) Agentic RAG
 - Input: question
-- Step A: retrieve top-k passages (configurable first-pass k)
-- Step B: generate a draft answer from the first-pass context
-- Step C: use the draft answer plus the question to drive a second retrieval pass (configurable second-pass k)
-- Step D: merge the first-pass and second-pass contexts
-- Step E: generate a final answer from the merged context
-- Step F: grounding verifier (`SUPPORTED` / `UNSUPPORTED`)
-- Step G: if unsupported, return `I don't know`; else return candidate
+- Step 1 retrieval: top-k using question embedding (`retrieval.agentic_first_top_k`)
+- LLM planning step: generates a refined follow-up query from question + first-pass context
+- Step 2 retrieval: second pass with `retrieval.agentic_second_top_k`
+- Generation: final QA answer from second-pass context
+- Post-processing: same normalization and cleanup
 
-## Retrieval Quality
-- **Embedding Model**: `BAAI/bge-large-en-v1.5` (Baai General Embeddings, English, v1.5)
-  - Why this model: Specifically trained for semantic search and ranking tasks; consistently outperforms lighter models (MiniLM, MPNet) on multiple benchmarks
-  - Trade-off: ~1.3GB download + slightly slower inference vs. 10-15% improvement in Hit@1 and MRR@5 metrics
-  - Configurable: Change `embedding_model` in `configs/benchmark.base.yaml` to use alternative models
-- **Integration**: Embeddings used for both retrieval pipeline (ChromaDB queries) and retrieval metrics evaluation (Hit@1/3/5, MRR@5, Context F1@5)
-- **Agentic Retrieval**: The second retrieval pass is driven by the first draft answer plus the question, then both retrieval results are merged before the final answer pass.
+## Runtime Components
 
-## Unified Prompt Policy
-- Shared rule for all model calls:
-  - default to context-grounded answering
-  - `answering.strict_context_only=true` keeps the original strict abstention policy
-  - `answering.strict_context_only=false` allows a best-effort draft answer before final verification
-  - if unsupported, output exactly `I don't know`
-  - output only final answer text
+- Generator model: configured by `model_name` (global in `src/main.py`)
+- Retriever embedding model: configured by `embedding_model`
+- Vector store: persistent ChromaDB at `./chroma_db`
+- Judge model for rubric scoring: `llama3.2:1b`
 
-## Generated Artifacts (in `evaluation/` folder)
-- Responses: `baseline_responses.txt`, `simple_rag_responses.txt`, `agentic_rag_responses.txt`
-- Metrics: `evaluation_results.csv` (pipeline-level), `query_level_scores.csv` (per-query scores)
-- Retrieval metrics logged in results: `Retrieval Hit@1`, `Retrieval Hit@3`, `Retrieval Hit@5`, `Retrieval MRR@5`, `Retrieval Context F1@5`
-- Failure analysis: `failure_mode_summary.csv`, `failure_cases.csv`, `analysis_report.md`
-- Visualizations: `charts/model_comparison.png`, `charts/latency_comparison.png`, `charts/idk_rate.png`, `charts/f1_distribution.png`, `charts/correctness_distribution.png`
+## Prompting and Output Policy
 
-## Configuration
-- Benchmark settings are loaded from `configs/benchmark.base.yaml` (or a custom file via `--config`).
-- CLI flags `--dataset` and `--max-queries` override config values.
-- **Embedding Model**: Uses `BAAI/bge-large-en-v1.5` for dense retrieval (configured via `embedding_model` in YAML). This model is optimized for English semantic search and significantly improves retrieval ranking quality (Hit@1, MRR@5) compared to lighter models like `all-MiniLM-L6-v2`. First run downloads ~1.3GB model; subsequent runs use cached version.
-- **Answer Policy Toggle**: `answering.strict_context_only` controls whether the generator stays strictly abstention-only or allows a best-effort draft answer during agentic retrieval.
+Shared QA prompt behavior:
+
+- Uses context when present
+- If strict mode is on and context is insufficient, expected output is `I don't know`
+- If strict mode is off, allows grounded best-effort answering
+- Returns only final answer text
+
+All pipeline outputs are normalized through a post-processing chain:
+
+1. Normalize abstentions to `I don't know`
+2. Remove repeated question terms from answer span
+3. Strip common grammatical stopwords to keep concise final output
+
+## Evaluation Stack
+
+### Automatic Metrics
+- Exact Match
+- F1 Score
+- Latency and latency/request
+
+### Retrieval Metrics
+- Hit@1, Hit@3, Hit@5
+- MRR@5
+- Context F1@5
+
+### LLM Judge Metrics
+- Correctness
+- Completeness
+- Reasoning
+- Faithfulness
+
+## Configuration Model
+
+- YAML config is loaded from `--config`
+- CLI overrides supported for:
+  - `--dataset`
+  - `--max-queries`
+- Core keys:
+  - `dataset`, `max_queries`
+  - `model_name`, `embedding_model`
+  - retrieval top-k values
+  - `answering.strict_context_only`
+  - `evaluation.run_llm_judge`
+  - output toggles for charts and query-level scores
+
+## Generated Artifacts
+
+Under `evaluation/`:
+
+- Pipeline responses: baseline/simple/agentic text files
+- Aggregate metrics: `evaluation_results.csv`
+- Per-query metrics: `query_level_scores.csv` (optional)
+- Failure analysis: summary CSV + failure case CSV
+- Report: `analysis_report.md`
+- Plots: quality, latency, abstention rate, score distributions

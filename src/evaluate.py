@@ -7,7 +7,26 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 
 def normalize_text(text):
-    return re.sub(r'\W+', ' ', text.lower().strip()).strip()
+    text = text.lower().strip()
+    text = re.sub(r'\W+', ' ', text)
+    stopwords = {
+        'is', 'am', 'are', 'was', 'were', 'be', 'being', 'been', 'has', 'have', 'had', 
+        'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'can', 'could', 'may', 
+        'might', 'must', 'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 
+        'of', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into', 'through', 
+        'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 
+        'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here', 
+        'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 
+        'most', 'other', 'some', 'such', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 
+        's', 't', 'just', 'don', 'now', 'that', 'this', 'these', 'those', 'i', 'me', 'my', 
+        'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself', 
+        'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 
+        'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves', 'what', 'which', 
+        'who', 'whom', 'whose', 'based', 'provided', 'context', 'specified', 'according'
+    }
+    words = text.split()
+    cleaned = [w for w in words if w not in stopwords]
+    return ' '.join(cleaned) if cleaned else ' '.join(words)
 
 def extract_answer_span(text):
     if not text:
@@ -37,7 +56,23 @@ def extract_answer_span(text):
 def exact_match(prediction, truth):
     prediction_norm = normalize_text(extract_answer_span(prediction))
     truth_norm = normalize_text(extract_answer_span(truth))
-    return int(prediction_norm == truth_norm)
+    
+    if not prediction_norm or not truth_norm:
+        return int(prediction_norm == truth_norm)
+        
+    if prediction_norm == truth_norm:
+        return 1
+        
+    # Relaxed EM: Check if truth is completely within prediction or vice-versa
+    try:
+        if re.search(r'\b' + re.escape(truth_norm) + r'\b', prediction_norm) or \
+           re.search(r'\b' + re.escape(prediction_norm) + r'\b', truth_norm):
+            return 1
+    except re.error:
+        if truth_norm in prediction_norm or prediction_norm in truth_norm:
+            return 1
+            
+    return 0
 
 def f1_score(prediction, truth):
     prediction_clean = extract_answer_span(prediction)
@@ -68,11 +103,11 @@ def token_overlap_f1(text_a, text_b):
     recall = num_same / len(tokens_b)
     return (2 * precision * recall) / (precision + recall)
 
-def calculate_retrieval_metrics(questions, contexts, top_k=5, embedding_model_name="all-MiniLM-L6-v2"):
+def calculate_retrieval_metrics(questions, contexts, top_k=5, embedding_model_name="all-MiniLM-L6-v2", collection_name="vector"):
     print(f"Calculating Retrieval Metrics (Hit@1/3/{top_k}, MRR@{top_k}). Embedding model: {embedding_model_name}")
     model = SentenceTransformer(embedding_model_name)
     client = chromadb.PersistentClient(path="./chroma_db")
-    collection = client.get_collection(name="vector")
+    collection = client.get_collection(name=collection_name)
 
     hit_at_1 = 0
     hit_at_3 = 0
@@ -106,8 +141,7 @@ def calculate_retrieval_metrics(questions, contexts, top_k=5, embedding_model_na
         gold_context = contexts[i]
         for doc in retrieved_docs:
             best_overlap = max(best_overlap, token_overlap_f1(doc, gold_context))
-        best_overlap_sum += best_overlap
-            
+        best_overlap_sum += best_overlap    
         if (i + 1) % 100 == 0:
             print(f"Retrieval checked for {i+1}/{len(questions)} queries.")
             

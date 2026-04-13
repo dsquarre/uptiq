@@ -1,14 +1,16 @@
 dataset: val_benchmark_1200.jsonl
-max_queries: 200
-model_name: llama3.2:1b
+max_queries: 10
+model_name: mistral:latest
 embedding_model: all-MiniLM-L6-v2
 retrieval:
-  simple_top_k: 2
-  agentic_first_top_k: 2
-  agentic_second_top_k: 3
+  simple_top_k: 3
+  agentic_first_top_k: 3
+  agentic_second_top_k: 6
 evaluation:
   run_llm_judge: true
 output:
   save_charts: true
   save_query_level_scores: true
+answering:
+  strict_context_only: false
 notes: Faster low-budget config for development and smoke tests.
