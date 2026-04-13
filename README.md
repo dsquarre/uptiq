@@ -90,7 +90,7 @@ python src/main.py --config configs/experiment1.yaml
 Full run with mistral LLM and relaxed context policy:
 
 ```bash
-python src/main.py --config configs/experiment2.yaml --dataset data/val_benchmark_1200.jsonl --max-queries 100
+python src/main.py --config configs/experiment2.yaml --dataset data/val_benchmark_1200.jsonl
 ```
 
 Low-budget smoke test:
